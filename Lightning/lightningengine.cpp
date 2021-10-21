@@ -1,5 +1,7 @@
 #include "LightningEngine.h"
 
+quint64 LightningEngine::next_id = 0;
+
 LightningEngine::LightningEngine(): commandList(new LightningCommandList()), commandListAttached(false) {}
 
 LightningEngine::LightningEngine(LightningCommandList *list): commandList(list), commandListAttached(true) {}

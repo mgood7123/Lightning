@@ -72,11 +72,11 @@ Lightning_ButtonView::Lightning_ButtonView(const QString &text, const int &textS
 
 void Lightning_ButtonView::onDraw(LightningEngine &engine)
 {
-    float radius = 20;
+    float radius = 10;
     float a = radius/2;
     QRectF w = {0, 0, getMeasuredWidth(), getMeasuredHeight()};
-    QRectF r = w.adjusted(a, a, -a, -a);
-    if (r.width() > 0 && r.height() > 0) {
+    QRectF r = w.adjusted(a, a, 0, 0);
+    if ((r.width() - r.x()) > 0 && (r.height() - r.y()) > 0) {
         engine.painter_SetHint(QPainter::Antialiasing, true);
 
         auto path_id = engine.painterPath_create();
@@ -87,6 +87,9 @@ void Lightning_ButtonView::onDraw(LightningEngine &engine)
 
         engine.painter_SetPixelSize(applyDpiScale(textSize));
         engine.painter_SetPenColor(textColor);
+//        QString b;
+//        QTextStream ts(&b, QTextStream::ReadWrite);
+//        ts << text << " [" << r.x() << ", " << r.y() << ", " << r.width() << ", " << r.height() << "]";
         engine.painter_DrawText(w, Qt::TextWordWrap | Qt::AlignmentFlag::AlignCenter, text);
     }
 }

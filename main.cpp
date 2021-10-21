@@ -5,6 +5,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication a(argc, argv);
     LightningWindowOpenGL w;
+//    w.resize(400, 400);
     w.show();
 
 //    auto tv = new Lightning_TextView("TextView!", Qt::green);
@@ -36,5 +37,6 @@ int main(int argc, char *argv[])
     w.setContentView(layer);
 
 //    w.printDebugLog = true;
+
     return a.exec();
 }

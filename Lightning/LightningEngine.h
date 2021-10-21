@@ -13,7 +13,7 @@ class LightningEngine {
     LightningCommandList * commandList;
     bool commandListAttached = false;
 
-    quint64 next_id = 0;
+    static quint64 next_id;
 public:
 
     template <typename T>

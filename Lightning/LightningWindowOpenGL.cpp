@@ -494,6 +494,7 @@ void LightningWindowOpenGL::draw() {
 
     QOpenGLFramebufferObjectFormat fboFormat;
     fboFormat.setSamples(8);
+    fboFormat.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
     QOpenGLFramebufferObject fbo(width(), height(), fboFormat);
     fbo.bind();
     glClearColor(0, 0, 0, 1);
@@ -505,6 +506,10 @@ void LightningWindowOpenGL::draw() {
     if (printDebugLog) qDebug() << "x.setPaintFlipped(true);";
     x.setPaintFlipped(true);
     if (printDebugLog) qDebug() << "QPainter painter(&x);";
+//    QPainter painterGL(&x);
+
+//    QImage xx(width(), height(), QImage::Format_RGBA8888);
+//    xx.fill(Qt::transparent);
     QPainter painter(&x);
 
     if (printDebugLog) qDebug() << "auto font = painter.font();";
@@ -530,7 +535,7 @@ void LightningWindowOpenGL::draw() {
     #define GET_POINTER(type, id, name, error_message) type * name = reinterpret_cast<type *>(pointer_id_map.value(id, nullptr)); if (name == nullptr) LightningEngine::fatal(error_message)
 
     if (printDebugLog) qDebug() << "// draw";
-    if (printDebugLog) qDebug().nospace() << "processing " << size << " command" << (size == 1 ? '\0' : 's');
+    if (printDebugLog) qDebug().nospace() << "// processing " << size << " command" << (size == 1 ? '\0' : 's');
 
     QString currentTag;
 
@@ -554,7 +559,7 @@ void LightningWindowOpenGL::draw() {
             int pixelSize = dataInt.next();
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ font.setPixelSize(" << pixelSize << ");";
             font.setPixelSize(pixelSize);
-            if (printDebugLog) qDebug() << "painter.setFont(font);";
+            if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setFont(font);";
             painter.setFont(font);
             break;
         }
@@ -565,7 +570,7 @@ void LightningWindowOpenGL::draw() {
             float a = dataFloat.next();
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ pen.setColor(QColor::fromRgbF(" << r << ", " << g << ", " << b << ", " << a << "));";
             pen.setColor(QColor::fromRgbF(r, g, b, a));
-            if (printDebugLog) qDebug() << "painter.setPen(pen);";
+            if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setPen(pen);";
             painter.setPen(pen);
             break;
         }
@@ -639,11 +644,15 @@ void LightningWindowOpenGL::draw() {
             int bit = dataInt.next();
             switch(bit) {
             case LightningEngine::BIT::COLOR_BIT: {
-                if (printDebugLog) qDebug() << "QPainterPath path;";
+                if (printDebugLog) {
+                    qDebug().nospace() << "{";
+                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ QPainterPath path;";
+                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ path.addRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] << ");";
+                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ painter.fillPath(path, clearColor);";
+                    qDebug().nospace() << "}";
+                }
                 QPainterPath path;
-                if (printDebugLog) qDebug() << "path.addRect(painter.window());";
-                path.addRect(painter.window());
-                if (printDebugLog) qDebug() << "painter.fillPath(path, clearColor);";
+                path.addRect(clipRegion[0], clipRegion[1], clipRegion[2], clipRegion[3]);
                 painter.fillPath(path, clearColor);
                 break;
             }
@@ -656,7 +665,7 @@ void LightningWindowOpenGL::draw() {
         // window and region
         case LightningEngine::Commands::state_scissor: {
             clipRegion = {dataInt.next(), dataInt.next(), dataInt.next(), dataInt.next()};
-            if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setClipRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] <<");";
+            if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setClipRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] << ");";
             painter.setClipRect(clipRegion[0], clipRegion[1], clipRegion[2], clipRegion[3]);
             break;
         }
@@ -670,11 +679,13 @@ void LightningWindowOpenGL::draw() {
         };
     }
 
-    if (printDebugLog) qDebug().nospace() << "processed " << size << " command" << (size == 1 ? '\0' : 's');
+    if (printDebugLog) qDebug().nospace() << "// processed " << size << " command" << (size == 1 ? '\0' : 's');
 
     #undef GET_POINTER
     if (printDebugLog) qDebug() << "painter.end();";
     painter.end();
+//    painterGL.drawImage(painterGL.window(), xx);
+//    painterGL.end();
 
     bool flip = true;
 
