@@ -9,14 +9,14 @@ public:
     virtual ~Lightning_Layout();
     QList<Lightning_View*> children;
 
-    void addChild(Lightning_View * view);
-    void addChild(Lightning_View * view, LayoutParams * params);
+    virtual void addChild(Lightning_View * view);
+    virtual void addChild(Lightning_View * view, LayoutParams * params);
 
-    void detachChild(Lightning_View * view);
+    virtual void detachChild(Lightning_View * view);
 
-    void removeChild(Lightning_View * view);
+    virtual void removeChild(Lightning_View * view);
 
-    void removeAllChildren();
+    virtual void removeAllChildren();
 
     // LightningView interface
 public:

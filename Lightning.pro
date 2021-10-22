@@ -26,6 +26,7 @@ SOURCES += \
     Lightning/LightningCommandList.cpp \
     Lightning/LightningEngine.cpp \
     Lightning/LightningLayouts/Lightning_Application_FPS_Layout.cpp \
+    Lightning/LightningLayouts/Lightning_DebugLayout.cpp \
     Lightning/LightningLayouts/Lightning_LayerLayout.cpp \
     Lightning/LightningLayouts/Lightning_Layout.cpp \
     Lightning/LightningLayouts/Lightning_LinearLayout.cpp \
@@ -51,6 +52,7 @@ HEADERS += \
     Lightning/LightningCommandList.h \
     Lightning/LightningEngine.h \
     Lightning/LightningLayouts/Lightning_Application_FPS_Layout.h \
+    Lightning/LightningLayouts/Lightning_DebugLayout.h \
     Lightning/LightningLayouts/Lightning_LayerLayout.h \
     Lightning/LightningLayouts/Lightning_Layout.h \
     Lightning/LightningLayouts/Lightning_LinearLayout.h \

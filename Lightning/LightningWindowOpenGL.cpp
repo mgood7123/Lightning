@@ -10,6 +10,7 @@ LightningWindowOpenGL::LightningWindowOpenGL(QOpenGLWindow::UpdateBehavior updat
     commandList(new LightningCommandList),
     engine()
 {
+
     windowData = new LightningWindowData();
     windowData->window = this;
     windowData->screen = screen();
@@ -46,6 +47,10 @@ LightningWindowOpenGL::~LightningWindowOpenGL()
     delete logger;
     delete windowData;
     delete commandList;
+    delete fbo;
+    delete fboFormat;
+    delete openGLPaintDevice;
+    delete image;
 }
 
 void LightningWindowOpenGL::setContentView(Lightning_View *view) {
@@ -89,17 +94,7 @@ void LightningWindowOpenGL::initializeGL()
         qWarning("OpenGL context does not support GL_KHR_debug extension");
     }
 
-    timer.setTimerType(Qt::PreciseTimer);
-    timer.connect(&timer, SIGNAL(timeout()), this, SLOT(update()));
-    timer.start(8);
-}
-
-void LightningWindowOpenGL::resizeGL(int w, int h)
-{
-    qDebug() << "resizing system to" << windowData->applyDpiScale(w) << "," << windowData->applyDpiScale(h);
-    if (contentView != nullptr) {
-        contentView->resize(windowData->applyDpiScale(w), windowData->applyDpiScale(h));
-    }
+    connect(this, SIGNAL(frameSwapped()), this, SLOT(update()), Qt::DirectConnection);
 }
 
 void LightningWindowOpenGL::paintGL()
@@ -128,22 +123,18 @@ void LightningWindowOpenGL::paintGL()
     // have at least one root
     auto *r = engine.subEngine("<root>", 0, 0, w, h);
 
-    bool render = true;
-    if (!render) {
-        r->scissor(0, 0, w, h/2);
-        r->setClearColor(1, 0, 1, 1);
-        r->clear(LightningEngine::COLOR_BIT);
-    } else {
-        if (contentView != nullptr) {
-            contentView->buildCoordinates({0, 0, w, h});
-            contentView->onMeasure(w, h);
-            contentView->draw(*r);
-        }
+    // TODO: implement caching of the command tree
+    if (contentView != nullptr) {
+        contentView->buildCoordinates({0, 0, w, h});
+        contentView->onMeasure(w, h);
+        contentView->draw(*r);
     }
+
+    commands_submitted_to_engine_last_frame = 0;
+    commands_submitted_to_driver_last_frame = 0;
 
     optimize();
     draw();
-    printDebugLog = false;
 }
 
 LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(LightningEngine * source, RegionTree * parent) {
@@ -152,7 +143,10 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
     LightningCommandList * current = source->getCommandList();
     auto children = source->getChildren();
     if (!current->commands.empty()) {
-        // in order to optimize the command list, we must emulate what it would do
+        // in order to optimize the command list, we must emulate (approximate) what it would reasonably do
+        //
+        // here we simply do basic command merging where possible
+
         auto commands = current->commands_Iterator();
         auto coords = current->absolute_coordinates_Iterator();
         auto dataBool = current->bool_Iterator(); // just in case
@@ -196,6 +190,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
         if (printDebugLog) qDebug() << "TAG:" << currentTree.tag << ", currentTree.object.bottom:" << currentTree.object.bottom << ", scissor_height:" << scissor_height;
 
         // always add scissor command
+        commands_submitted_to_engine_last_frame++;
         currentTree.object.lightningCommandList.addCommand(LightningEngine::state_scissor);
         currentTree.object.lightningCommandList.addInt({scissor_x, scissor_y, scissor_width, scissor_height});
         // return if region is invalid
@@ -225,6 +220,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
 
             // painter API
             case LightningEngine::Commands::state_painter_SetHint: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.hint = dataInt.next();
                 regionCache.hintEnabled = dataBool.next();
                 if (regionCache.hint.changed() || regionCache.hintEnabled.changed()) {
@@ -235,6 +231,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::state_painter_SetPixelSize: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.pixelSize = dataInt.next();
                 if (regionCache.pixelSize.changed()) {
                     currentTree.object.lightningCommandList.addCommand(cmd);
@@ -243,6 +240,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::state_painter_SetPenColor: {
+                commands_submitted_to_engine_last_frame++;
                 float r = dataFloat.next();
                 float g = dataFloat.next();
                 float b = dataFloat.next();
@@ -256,6 +254,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::draw_painter_DrawText: {
+                commands_submitted_to_engine_last_frame++;
                 QList data = {
                     currentTree.object.left + dataFloat.next(),
                     currentTree.object.top + dataFloat.next(),
@@ -279,6 +278,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::state_painter_SetClipPath: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.painterSetClipPath_path_id = dataQUnsignedInt64.next();
                 if (regionCache.painterSetClipPath_path_id.changed()) {
                     currentTree.object.lightningCommandList.addCommand(cmd);
@@ -287,6 +287,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::draw_painter_FillPath: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.painterFillPath_path_id = dataQUnsignedInt64.next();
                 float r = dataFloat.next();
                 float g = dataFloat.next();
@@ -314,6 +315,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::draw_painterPath_DrawRoundedRect: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.painterPathDrawRoundedRect_path_id = dataQUnsignedInt64.next();
                 QList data = {
                     currentTree.object.left + dataFloat.next(),
@@ -351,6 +353,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
 
             // native API
             case LightningEngine::Commands::state_setClearColor: {
+                commands_submitted_to_engine_last_frame++;
                 float r = dataFloat.next();
                 float g = dataFloat.next();
                 float b = dataFloat.next();
@@ -364,6 +367,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::draw_clear: {
+                commands_submitted_to_engine_last_frame++;
                 regionCache.clearBit = dataInt.next();
                 if (regionCache.clearBit.changed()) {
                     currentTree.object.lightningCommandList.addCommand(cmd);
@@ -372,6 +376,7 @@ LightningWindowOpenGL::RegionTree LightningWindowOpenGL::generateRegionTree(Ligh
                 break;
             }
             case LightningEngine::Commands::state_scissor: {
+                commands_submitted_to_engine_last_frame++;
                 auto sx = dataInt.next();
                 auto sy = dataInt.next();
                 auto sw = dataInt.next();
@@ -476,6 +481,7 @@ void LightningWindowOpenGL::optimize() {
     if (engine.commandListSize() == 0 && engine.getChildren().size() == 0) return;
 
     RegionTree tree = generateRegionTree(&engine);
+    commands_submitted_to_engine_since_start += commands_submitted_to_engine_last_frame;
 
     // flatten regions to command list
 
@@ -487,30 +493,77 @@ void LightningWindowOpenGL::optimize() {
     commandList->addCommandList(flattened);
 }
 
+\
+void LightningWindowOpenGL::resizeGL(int w, int h)
+{
+    auto dpiW = windowData->applyDpiScale(w);
+    auto dpiH = windowData->applyDpiScale(h);
+    qDebug() << "resizing system to" << dpiW << "," << dpiH;
+    if (contentView != nullptr) {
+        contentView->resize(dpiW, dpiH);
+    }
+    // this is required to deal with high dpi
+    delete openGLPaintDevice;
+    openGLPaintDevice = new QOpenGLPaintDevice(dpiW, dpiH);
+
+    switch (renderMode) {
+    case LightningWindowOpenGL::RenderMode_QImage: {
+        delete image;
+        image = new QImage(dpiW, dpiH, QImage::Format_RGBA8888);
+        break;
+    }
+    case LightningWindowOpenGL::RenderMode_FramebufferObject: {
+        openGLPaintDevice->setPaintFlipped(true);
+        if (fboFormat == nullptr) {
+            fboFormat = new QOpenGLFramebufferObjectFormat();
+            // we do not support anti aliasing
+            fboFormat->setSamples(0);
+            fboFormat->setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
+        }
+        delete fbo;
+        fbo = new QOpenGLFramebufferObject(dpiW, dpiH, *fboFormat);
+        break;
+    }
+    case LightningWindowOpenGL::RenderMode_Direct:
+        break;
+    }
+}
+
 void LightningWindowOpenGL::draw() {
     if (commandList == nullptr) return;
     auto size = commandList->commands.size();
     if (size == 0) return;
 
-    QOpenGLFramebufferObjectFormat fboFormat;
-    fboFormat.setSamples(8);
-    fboFormat.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-    QOpenGLFramebufferObject fbo(width(), height(), fboFormat);
-    fbo.bind();
+    switch (renderMode) {
+    case LightningWindowOpenGL::RenderMode_QImage:
+        image->fill(Qt::transparent);
+        break;
+    case LightningWindowOpenGL::RenderMode_FramebufferObject:
+        fbo->bind();
+        break;
+    case LightningWindowOpenGL::RenderMode_Direct:
+        break;
+    }
+
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (printDebugLog) qDebug() << "// setup";
     if (printDebugLog) qDebug() << "QOpenGLPaintDevice x(width(), height());";
-    QOpenGLPaintDevice x(width(), height());
     if (printDebugLog) qDebug() << "x.setPaintFlipped(true);";
-    x.setPaintFlipped(true);
     if (printDebugLog) qDebug() << "QPainter painter(&x);";
-//    QPainter painterGL(&x);
 
-//    QImage xx(width(), height(), QImage::Format_RGBA8888);
-//    xx.fill(Qt::transparent);
-    QPainter painter(&x);
+    switch (renderMode) {
+    case LightningWindowOpenGL::RenderMode_QImage:
+        painter.begin(image);
+        break;
+    case RenderMode_FramebufferObject:
+        painter.begin(openGLPaintDevice);
+        break;
+    case RenderMode_Direct:
+        painter.begin(openGLPaintDevice);
+        break;
+    }
 
     if (printDebugLog) qDebug() << "auto font = painter.font();";
     auto font = painter.font();
@@ -549,6 +602,7 @@ void LightningWindowOpenGL::draw() {
         }
         // painter API
         case LightningEngine::Commands::state_painter_SetHint: {
+            commands_submitted_to_driver_last_frame++;
             int hint = dataInt.next();
             bool enabled = dataBool.next();
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setRenderHint(QPainter::RenderHint(" << hint << "), " << enabled << ");";
@@ -556,6 +610,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::state_painter_SetPixelSize: {
+            commands_submitted_to_driver_last_frame++;
             int pixelSize = dataInt.next();
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ font.setPixelSize(" << pixelSize << ");";
             font.setPixelSize(pixelSize);
@@ -564,6 +619,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::state_painter_SetPenColor: {
+            commands_submitted_to_driver_last_frame++;
             float r = dataFloat.next();
             float g = dataFloat.next();
             float b = dataFloat.next();
@@ -575,6 +631,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::draw_painter_DrawText: {
+            commands_submitted_to_driver_last_frame++;
             float x = dataFloat.next();
             float y = dataFloat.next();
             float w = dataFloat.next();
@@ -586,6 +643,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::state_painter_SetClipPath: {
+            commands_submitted_to_driver_last_frame++;
             auto id = dataQUnsignedInt64.next();
             GET_POINTER(QPainterPath, id, path, "path is nullptr, did you forget to call `painterPath_create()` ?");
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setClipPath(*path_" << id << ");";
@@ -593,6 +651,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::draw_painter_FillPath: {
+            commands_submitted_to_driver_last_frame++;
             auto id = dataQUnsignedInt64.next();
             GET_POINTER(QPainterPath, id, path, "path is nullptr, did you forget to call `painterPath_create()` ?");
             float r = dataFloat.next();
@@ -611,6 +670,7 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::draw_painterPath_DrawRoundedRect: {
+            commands_submitted_to_driver_last_frame++;
             auto id = dataQUnsignedInt64.next();
             GET_POINTER(QPainterPath, id, path, "path is nullptr, did you forget to call `painterPath_create()` ?");
             float x = dataFloat.next();
@@ -632,6 +692,7 @@ void LightningWindowOpenGL::draw() {
         }
         // native API
         case LightningEngine::Commands::state_setClearColor: {
+            commands_submitted_to_driver_last_frame++;
             float r = dataFloat.next();
             float g = dataFloat.next();
             float b = dataFloat.next();
@@ -641,19 +702,12 @@ void LightningWindowOpenGL::draw() {
             break;
         }
         case LightningEngine::Commands::draw_clear: {
+            commands_submitted_to_driver_last_frame++;
             int bit = dataInt.next();
             switch(bit) {
             case LightningEngine::BIT::COLOR_BIT: {
-                if (printDebugLog) {
-                    qDebug().nospace() << "{";
-                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ QPainterPath path;";
-                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ path.addRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] << ");";
-                    qDebug().nospace() << "    /* TAG: " << currentTag << " */ painter.fillPath(path, clearColor);";
-                    qDebug().nospace() << "}";
-                }
-                QPainterPath path;
-                path.addRect(clipRegion[0], clipRegion[1], clipRegion[2], clipRegion[3]);
-                painter.fillPath(path, clearColor);
+                if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.fillRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] << ", clearColor);";
+                painter.fillRect(clipRegion[0], clipRegion[1], clipRegion[2], clipRegion[3], clearColor);
                 break;
             }
             default:
@@ -664,6 +718,7 @@ void LightningWindowOpenGL::draw() {
         }
         // window and region
         case LightningEngine::Commands::state_scissor: {
+            commands_submitted_to_driver_last_frame++;
             clipRegion = {dataInt.next(), dataInt.next(), dataInt.next(), dataInt.next()};
             if (printDebugLog) qDebug().nospace() << "/* TAG: " << currentTag << " */ painter.setClipRect(" << clipRegion[0] << ", " << clipRegion[1] << ", " << clipRegion[2] << ", " << clipRegion[3] << ");";
             painter.setClipRect(clipRegion[0], clipRegion[1], clipRegion[2], clipRegion[3]);
@@ -684,18 +739,29 @@ void LightningWindowOpenGL::draw() {
     #undef GET_POINTER
     if (printDebugLog) qDebug() << "painter.end();";
     painter.end();
-//    painterGL.drawImage(painterGL.window(), xx);
-//    painterGL.end();
 
-    bool flip = true;
+    switch (renderMode) {
+    case LightningWindowOpenGL::RenderMode_QImage:
+        painter.begin(openGLPaintDevice);
+        painter.drawImage(painter.window(), *image);
+        painter.end();
+        break;
+    case LightningWindowOpenGL::RenderMode_FramebufferObject: {
+        bool flip = true;
 
-    if (flip) {
-        QOpenGLFramebufferObject::blitFramebuffer(
-                    0, {0, 0, fbo.width(), fbo.height()},
-                    &fbo, {0, fbo.height(), fbo.width(), -fbo.height()});
-    } else {
-        QOpenGLFramebufferObject::blitFramebuffer(
-                    0, {0, 0, fbo.width(), fbo.height()},
-                    &fbo, {0, 0, fbo.width(), fbo.height()});
+        if (flip) {
+            QOpenGLFramebufferObject::blitFramebuffer(
+                        0, {0, 0, fbo->width(), fbo->height()},
+                        fbo, {0, fbo->height(), fbo->width(), -(fbo->height())});
+        } else {
+            QOpenGLFramebufferObject::blitFramebuffer(
+                        0, {0, 0, fbo->width(), fbo->height()},
+                        fbo, {0, 0, fbo->width(), fbo->height()});
+        }
+        break;
     }
+    case LightningWindowOpenGL::RenderMode_Direct:
+        break;
+    }
+    commands_submitted_to_driver_since_start += commands_submitted_to_driver_last_frame;
 }

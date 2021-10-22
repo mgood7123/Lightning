@@ -5,17 +5,13 @@ int main(int argc, char *argv[])
 {
     QGuiApplication a(argc, argv);
     LightningWindowOpenGL w;
-//    w.resize(400, 400);
     w.show();
 
-//    auto tv = new Lightning_TextView("TextView!", Qt::green);
-//    w.setContentView(tv);
-
-    auto * layer = new Lightning_Application_FPS_Layout();
+    auto * debug = new Lightning_DebugLayout();
 
     auto * table = new Lightning_LinearLayout();
     table->setOrientation(table->Horizontal);
-    layer->addChild(table);
+    debug->addChild(table);
 
     auto * colors = new Lightning_LinearLayout();
     auto * buttons = new Lightning_LinearLayout();
@@ -34,7 +30,7 @@ int main(int argc, char *argv[])
     colors->addChild(new Lightning_ColorView(1, 0, 1));
     buttons->addChild(new Lightning_ButtonView("pink", QColor::fromRgbF(1, 0, 1)));
 
-    w.setContentView(layer);
+    w.setContentView(debug);
 
 //    w.printDebugLog = true;
 

@@ -10,6 +10,7 @@
 #include "LightningLayouts/Lightning_LinearLayout.h"
 #include "LightningLayouts/Lightning_LayerLayout.h"
 #include "LightningLayouts/Lightning_Application_FPS_Layout.h"
+#include "LightningLayouts/Lightning_DebugLayout.h"
 
 #include "LightningWindowOpenGL.h"
 

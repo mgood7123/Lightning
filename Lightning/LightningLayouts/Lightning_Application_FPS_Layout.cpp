@@ -1,7 +1,5 @@
 #include "Lightning_Application_FPS_Layout.h"
 
-#include <chrono>
-
 Lightning_Application_FPS_Layout::Lightning_Application_FPS_Layout() : Lightning_Application_FPS_Layout(13) {}
 
 Lightning_Application_FPS_Layout::Lightning_Application_FPS_Layout(const int &textSize) : Lightning_Application_FPS_Layout(textSize, QColorConstants::White) {}

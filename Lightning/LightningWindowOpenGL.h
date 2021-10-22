@@ -1,7 +1,14 @@
 #ifndef LIGHTNINGWINDOWOPENGL_H
 #define LIGHTNINGWINDOWOPENGL_H
 
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QTouchEvent>
+#include <QTabletEvent>
+
 #include <QOpenGLDebugLogger>
+#include <QOpenGLFramebufferObject>
+#include <QOpenGLPaintDevice>
 #include <QOpenGLWindow>
 #include <QTimer>
 #include "Lightning.h"
@@ -10,7 +17,7 @@ class LightningWindowOpenGL : public QOpenGLWindow
 {
     Q_OBJECT
     QTimer timer;
-    LightningCommandList * commandList;
+    LightningCommandList * commandList = nullptr;
     LightningEngine engine;
     LightningWindowData * windowData = nullptr;
     Lightning_View * contentView = nullptr;
@@ -85,10 +92,48 @@ public:
 
     ~LightningWindowOpenGL();
 
+
+
     void setContentView(Lightning_View * view);
     void setContentView(Lightning_View * view, Lightning_View::LayoutParams * params);
 
+    enum RenderMode {
+        RenderMode_QImage,
+        RenderMode_FramebufferObject,
+        RenderMode_Direct
+    };
+
+    // FBO seems to offer the best performance on Android
+    // Direct is somehow worse on Android
+    // and QImage is slow on android
+    //
+    // however all of these are fast on desktop
+    //
+    RenderMode renderMode = RenderMode_FramebufferObject;
+
+    const char * renderModeToString() {
+        switch(renderMode) {
+        case LightningWindowOpenGL::RenderMode_QImage:
+            return "QImage";
+        case LightningWindowOpenGL::RenderMode_FramebufferObject:
+            return "FramebufferObject";
+        case LightningWindowOpenGL::RenderMode_Direct:
+            return "Direct";
+        }
+    }
+
+    quint64 commands_submitted_to_engine_since_start = 0;
+    quint64 commands_submitted_to_driver_since_start = 0;
+    quint64 commands_submitted_to_engine_last_frame = 0;
+    quint64 commands_submitted_to_driver_last_frame = 0;
+
 private:
+    QOpenGLFramebufferObjectFormat * fboFormat = nullptr;
+    QOpenGLFramebufferObject * fbo = nullptr;
+    QOpenGLPaintDevice * openGLPaintDevice = nullptr;
+    QPainter painter;
+    QImage * image = nullptr;
+
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
@@ -96,6 +141,45 @@ private:
     LightningCommandList flattenTree(const RegionTree &tree);
     void optimize();
     void draw();
+
+    // QWindow interface
+protected:
+    virtual void keyPressEvent(QKeyEvent * keyEvent) override
+    {
+        qDebug() << "keyPressEvent";
+    }
+    virtual void keyReleaseEvent(QKeyEvent * keyEvent) override
+    {
+        qDebug() << "keyReleaseEvent";
+    }
+    virtual void mousePressEvent(QMouseEvent * mouseEvent) override
+    {
+        qDebug() << "mousePressEvent";
+    }
+    virtual void mouseReleaseEvent(QMouseEvent * mouseEvent) override
+    {
+        qDebug() << "mouseReleaseEvent";
+    }
+    virtual void mouseDoubleClickEvent(QMouseEvent * mouseEvent) override
+    {
+        qDebug() << "mouseDoubleClickEvent";
+    }
+    virtual void mouseMoveEvent(QMouseEvent * mouseEvent) override
+    {
+//        qDebug() << "mouseMoveEvent";
+    }
+    virtual void wheelEvent(QWheelEvent * wheelEvent) override
+    {
+        qDebug() << "wheelEvent";
+    }
+    virtual void touchEvent(QTouchEvent * touchEvent) override
+    {
+        qDebug() << "touchEvent";
+    }
+    virtual void tabletEvent(QTabletEvent * tabletEvent) override
+    {
+        qDebug() << "tabletEvent";
+    }
 };
 
 

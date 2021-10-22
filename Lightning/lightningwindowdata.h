@@ -4,10 +4,12 @@
 #include <QWindow>
 #include <QScreen>
 
+class LightningWindowOpenGL;
+
 class LightningWindowData
 {
 public:
-    QWindow * window = nullptr;
+    LightningWindowOpenGL * window = nullptr;
     QScreen * screen = nullptr;
     qreal dpiScale = 1;
 
